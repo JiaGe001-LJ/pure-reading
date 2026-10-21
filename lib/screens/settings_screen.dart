@@ -89,7 +89,7 @@ class SettingsScreen extends StatelessWidget {
           ListTile(
             leading: const Icon(Icons.info_outline),
             title: const Text('关于'),
-            subtitle: const Text('$appName · v$appVersion'),
+            subtitle: const Text('$appName · v$appVersion · 作者 $appAuthor'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => _showAbout(context),
           ),
@@ -106,6 +106,8 @@ class SettingsScreen extends StatelessWidget {
       applicationIcon: const Icon(Icons.auto_stories_outlined, size: 48),
       children: [
         const Text('轻量、本地优先的文本与漫画阅读器。'),
+        const SizedBox(height: 12),
+        const Text('作者：$appAuthor'),
         const SizedBox(height: 12),
         const Text('功能：\n'
             '· TXT 文本阅读（编码自动识别、字号/字体/翻页方向可调）\n'
