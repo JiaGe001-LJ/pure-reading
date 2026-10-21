@@ -2,7 +2,9 @@ package com.purereading.pure_reading
 
 import android.content.Intent
 import android.net.Uri
+import android.os.Environment
 import android.provider.DocumentsContract
+import android.provider.Settings
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -40,6 +42,26 @@ class MainActivity : FlutterActivity() {
                         pendingResult = result
                         pendingDestDir = call.argument<String>("destDir")
                         startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT_TREE), REQ_PICK_FOLDER)
+                    }
+                    "hasAllFilesAccess" -> {
+                        result.success(Environment.isExternalStorageManager())
+                    }
+                    "requestAllFilesAccess" -> {
+                        // 跳转系统设置开启"所有文件访问权限"（Android 11+）。
+                        // 用户开启返回后，Dart 侧重新检查 hasAllFilesAccess。
+                        try {
+                            val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION)
+                            intent.data = Uri.parse("package:$packageName")
+                            startActivity(intent)
+                            result.success(true)
+                        } catch (_: Exception) {
+                            try {
+                                startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
+                                result.success(true)
+                            } catch (_: Exception) {
+                                result.success(false)
+                            }
+                        }
                     }
                     else -> result.notImplemented()
                 }

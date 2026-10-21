@@ -134,6 +134,76 @@ class ImportService {
     return _buildBookFromFolder(id, destDir, folderName, items);
   }
 
+  /// Android 是否已开启"所有文件访问权限"（内置文件夹浏览器需要）。
+  Future<bool> hasAllFilesAccess() async {
+    if (!Platform.isAndroid) return true;
+    try {
+      return await _importerChannel.invokeMethod<bool>('hasAllFilesAccess') ??
+          false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// 跳转系统设置页开启"所有文件访问权限"。返回后需重新调用
+  /// [hasAllFilesAccess] 确认是否已授权。
+  Future<bool> requestAllFilesAccess() async {
+    if (!Platform.isAndroid) return true;
+    try {
+      return await _importerChannel.invokeMethod<bool>('requestAllFilesAccess') ??
+          false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// 按真实路径导入整个文件夹为"书"（内置文件夹浏览器选择结果）。
+  /// 自动判别：根目录纯顺序图片 → 平铺漫画；含子目录 / PDF → 文件夹书。
+  Future<Book?> pickBookFolderByPath(String dirPath) async {
+    final root = Directory(dirPath);
+    if (!await root.exists()) return null;
+    final id = _newId();
+    final destDir = p.join(storage.booksDir.path, id);
+    final items = <FolderFile>[];
+    try {
+      await for (final e in root.list(recursive: true, followLinks: false)) {
+        if (e is! File) continue;
+        final ext = p.extension(e.path).toLowerCase().replaceFirst('.', '');
+        if (!_imageExts.contains(ext) && !_pdfExts.contains(ext)) continue;
+        final rel = p.relative(e.path, from: root.path);
+        items.add(FolderFile(rel: rel.replaceAll('\\', '/'), path: e.path));
+      }
+    } catch (_) {
+      return null;
+    }
+    if (items.isEmpty) return null;
+    final copied = <FolderFile>[];
+    for (final f in items) {
+      final src = File(f.path);
+      final rel = f.rel;
+      final targetDir = rel.contains('/')
+          ? Directory(p.join(destDir, p.dirname(rel.replaceAll('/', p.separator))))
+          : Directory(destDir);
+      await targetDir.create(recursive: true);
+      var base = p.basename(src.path);
+      var dest = File(p.join(targetDir.path, base));
+      var n = 1;
+      while (await dest.exists()) {
+        base =
+            '${p.basenameWithoutExtension(src.path)}_$n.${p.extension(src.path)}';
+        dest = File(p.join(targetDir.path, base));
+        n++;
+      }
+      await src.copy(dest.path);
+      copied.add(FolderFile(
+          rel: rel.contains('/')
+              ? '${p.dirname(rel.replaceAll('/', p.separator)).replaceAll(p.separator, '/')}/$base'
+              : base,
+          path: dest.path));
+    }
+    return _buildBookFromFolder(id, destDir, p.basename(root.path), copied);
+  }
+
   Future<Book?> _pickBookFolderFallback(String destDir) async {
     final dirPath = await FilePicker.platform.getDirectoryPath();
     if (dirPath == null) return null;

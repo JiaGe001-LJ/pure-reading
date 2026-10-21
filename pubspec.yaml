@@ -1,7 +1,7 @@
 name: pure_reading
 description: "洁阅读 Pure Reading - 轻量文本与漫画阅读器"
 publish_to: 'none'
-version: 1.0.6+6
+version: 1.1.0+8
 
 environment:
   sdk: ^3.5.0

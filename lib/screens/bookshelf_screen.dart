@@ -1,3 +1,6 @@
+import 'dart:io';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -5,6 +8,7 @@ import '../models/book.dart';
 import '../services/import_service.dart';
 import '../state/app_state.dart';
 import '../widgets/book_cover.dart';
+import 'folder_picker_screen.dart';
 import 'folder_reader_screen.dart';
 import 'image_reader_screen.dart';
 import 'pdf_reader_screen.dart';
@@ -52,7 +56,7 @@ class BookshelfScreen extends StatelessWidget {
           if (books.isNotEmpty) await state.addBooks(books);
           break;
         case 'folder':
-          await _importFolderWithProgress(context, state, importer);
+          await _importFolder(context, state, importer);
           break;
         case 'url':
           await _importUrl(context, importer, state);
@@ -66,10 +70,77 @@ class BookshelfScreen extends StatelessWidget {
     }
   }
 
+  /// 文件夹导入：优先内置文件夹浏览器（真机 SAF 权限对话框不稳定），
+  /// 未开启"所有文件访问权限"时引导授权；复制耗时较长时显示进度框。
+  Future<void> _importFolder(
+      BuildContext context, AppState state, ImportService importer) async {
+    String? dirPath;
+    if (Platform.isAndroid) {
+      var hasAccess = await importer.hasAllFilesAccess();
+      if (!hasAccess) {
+        if (!context.mounted) return;
+        final choice = await showDialog<String>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('选择文件夹的方式'),
+            content: const Text(
+                '为了稳定选择文件夹（避免系统文件选择器偶尔闪退），推荐开启"所有文件访问权限"，'
+                '之后直接在洁阅读内浏览文件夹。\n\n也可以继续用系统文件选择器。'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, 'saf'),
+                child: const Text('用系统选择器（备用）'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, 'grant'),
+                child: const Text('去开启权限'),
+              ),
+            ],
+          ),
+        );
+        if (!context.mounted) return;
+        if (choice == 'grant') {
+          await importer.requestAllFilesAccess();
+          hasAccess = await importer.hasAllFilesAccess();
+          if (hasAccess && context.mounted) {
+            dirPath = await Navigator.of(context).push<String>(
+              MaterialPageRoute(builder: (_) => const FolderPickerScreen()),
+            );
+          } else if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                content: Text('未开启权限，无法使用内置文件夹浏览器')));
+            return;
+          } else {
+            return;
+          }
+        } else {
+          // 备选：系统 SAF 选择器
+          await _importFolderWithProgress(context, state, importer, null);
+          return;
+        }
+      } else if (context.mounted) {
+        dirPath = await Navigator.of(context).push<String>(
+          MaterialPageRoute(builder: (_) => const FolderPickerScreen()),
+        );
+      }
+    } else {
+      // 非 Android：file_picker 目录选择
+      dirPath = await FilePicker.platform.getDirectoryPath();
+    }
+    if (!context.mounted) return;
+    if (dirPath == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('已取消导入（请选择文件夹，不要选 mobi / zip 等压缩包文件）')));
+      return;
+    }
+    await _importFolderWithProgress(context, state, importer, dirPath);
+  }
+
   /// 文件夹导入：复制图片可能耗时较长（大目录），显示"正在导入"进度框，
   /// 避免用户以为卡死；完成后自动关闭并加入书架。
-  Future<void> _importFolderWithProgress(
-      BuildContext context, AppState state, ImportService importer) async {
+  /// [dirPath] 非空时按真实路径导入（内置浏览器）；为空时走系统 SAF。
+  Future<void> _importFolderWithProgress(BuildContext context, AppState state,
+      ImportService importer, String? dirPath) async {
     if (!context.mounted) return;
     showDialog<void>(
       context: context,
@@ -96,7 +167,9 @@ class BookshelfScreen extends StatelessWidget {
     );
     Book? book;
     try {
-      book = await importer.pickBookFolder();
+      book = dirPath == null
+          ? await importer.pickBookFolder()
+          : await importer.pickBookFolderByPath(dirPath);
     } finally {
       if (context.mounted) {
         Navigator.of(context, rootNavigator: true).pop();
