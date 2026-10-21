@@ -66,8 +66,7 @@ class BookshelfScreen extends StatelessWidget {
           if (book != null) await state.addBooks([book]);
           break;
         case 'imgdir':
-          final book = await importer.pickImageFolderAsComic();
-          if (book != null) await state.addBooks([book]);
+          await _importFolderWithProgress(context, state, importer);
           break;
         case 'pdf':
           final books = await importer.pickPdfFiles();
@@ -82,6 +81,50 @@ class BookshelfScreen extends StatelessWidget {
         ScaffoldMessenger.of(context)
             .showSnackBar(SnackBar(content: Text('导入失败：$e')));
       }
+    }
+  }
+
+  /// 文件夹导入：复制图片可能耗时较长（大目录），显示"正在导入"进度框，
+  /// 避免用户以为卡死；完成后自动关闭并加入书架。
+  Future<void> _importFolderWithProgress(
+      BuildContext context, AppState state, ImportService importer) async {
+    if (!context.mounted) return;
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Dialog(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 28,
+                height: 28,
+                child: CircularProgressIndicator(strokeWidth: 3),
+              ),
+              SizedBox(width: 16),
+              Flexible(
+                child: Text('正在导入图片…请稍候'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    Book? book;
+    try {
+      book = await importer.pickImageFolderAsComic();
+    } finally {
+      if (context.mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+      }
+    }
+    if (book != null && context.mounted) {
+      await state.addBooks([book]);
+    } else if (context.mounted) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('未导入任何图片')));
     }
   }
 

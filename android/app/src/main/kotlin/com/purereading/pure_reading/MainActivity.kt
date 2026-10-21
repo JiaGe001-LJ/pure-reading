@@ -47,51 +47,56 @@ class MainActivity : FlutterActivity() {
 
     private fun onFolderPicked(treeUri: Uri) {
         val dest = pendingDestDir
-        if (dest == null) {
+        val cb = pendingResult
+        if (dest == null || cb == null) {
             pendingResult?.success(null)
             pendingResult = null
             return
         }
-        val images = enumerateImages(treeUri)
-        if (images.isEmpty()) {
-            pendingResult?.success(null)
-            pendingResult = null
-            return
-        }
-        val dir = File(dest)
-        dir.mkdirs()
-        val used = HashSet<String>()
-        val copied = mutableListOf<String>()
-        for ((name, uri) in images) {
-            var base = name
-            var n = 1
-            while (!used.add(base)) {
-                val dot = base.lastIndexOf('.')
-                base = if (dot > 0) {
-                    "${base.substring(0, dot)}_$n${base.substring(dot)}"
+        // 枚举 + 复制全部放到后台线程，避免大目录阻塞 UI 线程（ANR / 卡死）。
+        Thread {
+            val images = enumerateImages(treeUri)
+            val dir = File(dest)
+            dir.mkdirs()
+            val used = HashSet<String>()
+            val copied = mutableListOf<String>()
+            for ((name, uri) in images) {
+                var base = name
+                var n = 1
+                while (!used.add(base)) {
+                    val dot = base.lastIndexOf('.')
+                    base = if (dot > 0) {
+                        "${base.substring(0, dot)}_$n${base.substring(dot)}"
+                    } else {
+                        "${base}_$n"
+                    }
+                    n++
+                }
+                try {
+                    contentResolver.openInputStream(uri)?.use { input ->
+                        File(dir, base).outputStream().use { output -> input.copyTo(output) }
+                    }
+                    copied.add(File(dir, base).absolutePath)
+                } catch (_: Exception) {
+                    // 单个文件失败不影响其余
+                }
+            }
+            // 显示名可能带 provider 前缀（如 "xxx: Pictures/new-chat"），只保留最后一段
+            val raw = queryDisplayName(treeUri) ?: treeUri.lastPathSegment ?: "folder"
+            val folderName = raw.substringAfter(':').substringAfterLast('/').ifEmpty { raw }
+            runOnUiThread {
+                val result = if (copied.isEmpty()) {
+                    null
                 } else {
-                    "${base}_$n"
+                    mapOf<String, Any>(
+                        "folderName" to folderName,
+                        "files" to copied
+                    )
                 }
-                n++
+                cb.success(result)
+                pendingResult = null
             }
-            try {
-                contentResolver.openInputStream(uri)?.use { input ->
-                    File(dir, base).outputStream().use { output -> input.copyTo(output) }
-                }
-                copied.add(File(dir, base).absolutePath)
-            } catch (_: Exception) {
-                // 单个文件失败不影响其余
-            }
-        }
-        // 显示名可能带 provider 前缀（如 "xxx: Pictures/new-chat"），只保留最后一段
-        val raw = queryDisplayName(treeUri) ?: treeUri.lastPathSegment ?: "folder"
-        val folderName = raw.substringAfter(':').substringAfterLast('/').ifEmpty { raw }
-        val result = mapOf<String, Any>(
-            "folderName" to folderName,
-            "files" to copied
-        )
-        pendingResult?.success(result)
-        pendingResult = null
+        }.start()
     }
 
     /// 通过 DocumentsContract 递归枚举 treeUri 下的全部图片文件。
