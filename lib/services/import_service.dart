@@ -109,10 +109,12 @@ class ImportService {
     final String folderName;
     if (Platform.isAndroid) {
       try {
-        final result = await _importerChannel.invokeMapMethod<String, dynamic>(
-          'pickBookFolderAndCopy',
-          {'destDir': destDir},
-        );
+        final result = await _importerChannel
+            .invokeMapMethod<String, dynamic>(
+              'pickBookFolderAndCopy',
+              {'destDir': destDir},
+            )
+            .timeout(const Duration(seconds: 90));
         if (result == null) return null;
         folderName = result['folderName'] as String? ?? p.basename(destDir);
         items = ((result['files'] as List?) ?? const [])

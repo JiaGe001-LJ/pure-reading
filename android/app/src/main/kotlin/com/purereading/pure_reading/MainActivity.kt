@@ -14,6 +14,10 @@ class MainActivity : FlutterActivity() {
         private const val REQ_PICK_FOLDER = 4101
         private val IMAGE_EXTS = setOf("jpg", "jpeg", "png", "webp", "bmp", "gif")
         private val BOOK_EXTS = IMAGE_EXTS + "pdf"
+        // 压缩包 / 电子书容器：DocumentsUI 会把这类“文件”展开成虚拟目录，
+        // 误选后枚举内部大量小文件会卡死。碰到直接跳过，不展开、不收录。
+        private val CONTAINER_EXTS =
+            setOf("mobi", "epub", "azw", "azw3", "zip", "rar", "7z", "cbz", "cbr", "tar", "gz")
     }
 
     private var pendingResult: MethodChannel.Result? = null
@@ -122,6 +126,13 @@ class MainActivity : FlutterActivity() {
     private fun relOf(base: String, rel: String): String =
         if (rel.contains('/')) "${rel.substringBeforeLast('/')}/$base" else base
 
+    /// 是否为压缩包/电子书容器（mobi/epub/zip 等）。这类“目录”是 DocumentsUI
+    /// 展开的虚拟目录，枚举内部会卡，直接跳过。
+    private fun isContainerDir(name: String): Boolean {
+        val ext = name.substringAfterLast('.', "").lowercase()
+        return CONTAINER_EXTS.contains(ext)
+    }
+
     /// 仅枚举图片（平铺路径，兼容旧的“整目录图片漫画”导入）。
     private fun enumerateImages(treeUri: Uri): List<Triple<String, String, Uri>> {
         val out = mutableListOf<Triple<String, String, Uri>>()
@@ -143,7 +154,7 @@ class MainActivity : FlutterActivity() {
                         val name = c.getString(1) ?: continue
                         val mime = c.getString(2) ?: ""
                         if (mime == DocumentsContract.Document.MIME_TYPE_DIR) {
-                            stack.add(id)
+                            if (!isContainerDir(name)) stack.add(id)
                         } else {
                             val ext = name.substringAfterLast('.', "").lowercase()
                             if (mime.startsWith("image/") || IMAGE_EXTS.contains(ext)) {
@@ -180,7 +191,9 @@ class MainActivity : FlutterActivity() {
                         val name = c.getString(1) ?: continue
                         val mime = c.getString(2) ?: ""
                         if (mime == DocumentsContract.Document.MIME_TYPE_DIR) {
-                            stack.add(Pair(id, if (rel.isEmpty()) name else "$rel/$name"))
+                            if (!isContainerDir(name)) {
+                                stack.add(Pair(id, if (rel.isEmpty()) name else "$rel/$name"))
+                            }
                         } else {
                             val ext = name.substringAfterLast('.', "").lowercase()
                             val isImage = mime.startsWith("image/") || IMAGE_EXTS.contains(ext)
