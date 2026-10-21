@@ -1,0 +1,35 @@
+name: pure_reading
+description: "洁阅读 Pure Reading - 轻量文本与漫画阅读器"
+publish_to: 'none'
+version: 1.0.5+5
+
+environment:
+  sdk: ^3.5.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  provider: ^6.1.2
+  path_provider: ^2.1.4
+  file_picker: ^8.1.2
+  image: ^4.2.0
+  fast_gbk: ^1.0.0
+  pdfx: ^2.11.0
+  path: ^1.9.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+# 本地 patch 的 pdfx：修复手动渲染路径（每次渲染重新 openPage，
+# 避免 Android PdfRenderer 打开新页关闭旧页后复用已关闭 Page 抛异常）。
+dependency_overrides:
+  pdfx:
+    path: packages/pdfx_patched
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/
