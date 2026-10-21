@@ -5,6 +5,7 @@ import '../models/book.dart';
 import '../services/import_service.dart';
 import '../state/app_state.dart';
 import '../widgets/book_cover.dart';
+import 'folder_reader_screen.dart';
 import 'image_reader_screen.dart';
 import 'pdf_reader_screen.dart';
 import 'txt_reader_screen.dart';
@@ -23,27 +24,16 @@ class BookshelfScreen extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              leading: const Icon(Icons.description_outlined),
-              title: const Text('导入文本（TXT）'),
-              onTap: () => Navigator.pop(ctx, 'txt'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.photo_library_outlined),
-              title: const Text('导入图片 / 漫画（选文件）'),
-              subtitle: const Text('多张图片按文件名排序，作为一本漫画'),
-              onTap: () => Navigator.pop(ctx, 'img'),
+              leading: const Icon(Icons.file_open_outlined),
+              title: const Text('导入文件（TXT / 图片 / PDF）'),
+              subtitle: const Text('选择一个或多个文件，自动识别类型，合并成书'),
+              onTap: () => Navigator.pop(ctx, 'files'),
             ),
             ListTile(
               leading: const Icon(Icons.folder_outlined),
-              title: const Text('导入漫画文件夹（整目录）'),
-              subtitle: const Text('扫描文件夹内全部图片（含子目录），作为一本漫画'),
-              onTap: () => Navigator.pop(ctx, 'imgdir'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.picture_as_pdf_outlined),
-              title: const Text('导入 PDF（漫画 / 文档）'),
-              subtitle: const Text('PDF 每页转图，支持双页分割配置'),
-              onTap: () => Navigator.pop(ctx, 'pdf'),
+              title: const Text('导入文件夹（图片漫画 / PDF / 章节）'),
+              subtitle: const Text('自动识别内容；子文件夹=章节，在 App 内继续打开'),
+              onTap: () => Navigator.pop(ctx, 'folder'),
             ),
             ListTile(
               leading: const Icon(Icons.link),
@@ -57,20 +47,12 @@ class BookshelfScreen extends StatelessWidget {
     if (action == null || !context.mounted) return;
     try {
       switch (action) {
-        case 'txt':
-          final books = await importer.pickTextFiles();
+        case 'files':
+          final books = await importer.pickFiles();
           if (books.isNotEmpty) await state.addBooks(books);
           break;
-        case 'img':
-          final book = await importer.pickImagesAsComic();
-          if (book != null) await state.addBooks([book]);
-          break;
-        case 'imgdir':
+        case 'folder':
           await _importFolderWithProgress(context, state, importer);
-          break;
-        case 'pdf':
-          final books = await importer.pickPdfFiles();
-          if (books.isNotEmpty) await state.addBooks(books);
           break;
         case 'url':
           await _importUrl(context, importer, state);
@@ -114,7 +96,7 @@ class BookshelfScreen extends StatelessWidget {
     );
     Book? book;
     try {
-      book = await importer.pickImageFolderAsComic();
+      book = await importer.pickBookFolder();
     } finally {
       if (context.mounted) {
         Navigator.of(context, rootNavigator: true).pop();
@@ -124,7 +106,7 @@ class BookshelfScreen extends StatelessWidget {
       await state.addBooks([book]);
     } else if (context.mounted) {
       ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('未导入任何图片')));
+          .showSnackBar(const SnackBar(content: Text('未导入任何内容')));
     }
   }
 
@@ -168,6 +150,7 @@ class BookshelfScreen extends StatelessWidget {
         builder: (_) => switch (book.type) {
           BookType.txt => TxtReaderScreen(book: book),
           BookType.pdf => PdfReaderScreen(book: book),
+          BookType.folder => FolderReaderScreen(book: book),
           _ => ImageReaderScreen(book: book),
         },
       ),
@@ -263,7 +246,7 @@ class _EmptyShelf extends StatelessWidget {
                   .titleMedium
                   ?.copyWith(color: scheme.outline)),
           const SizedBox(height: 8),
-          Text('点击右下角 + 导入 TXT / 图片漫画 / PDF',
+          Text('点击右下角 + 导入文件 / 文件夹 / 网址',
               style: Theme.of(context)
                   .textTheme
                   .bodySmall
