@@ -105,8 +105,9 @@ class BookshelfScreen extends StatelessWidget {
     if (book != null && context.mounted) {
       await state.addBooks([book]);
     } else if (context.mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('未导入任何内容')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('已取消导入（请选择文件夹，不要选 mobi / zip 等压缩包文件）'),
+      ));
     }
   }
 
