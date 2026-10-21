@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/services.dart' show MethodChannel;
 import 'package:image/image.dart' as img;
 import 'package:path/path.dart' as p;
 
@@ -12,6 +13,9 @@ class ImportService {
   final StorageService storage;
 
   ImportService(this.storage);
+
+  static const MethodChannel _importerChannel =
+      MethodChannel('pure_reading/importer');
 
   static const _imageExts = ['jpg', 'jpeg', 'png', 'webp', 'bmp', 'gif'];
   static const _pdfExts = ['pdf'];
@@ -73,7 +77,37 @@ class ImportService {
 
   /// 选择整个文件夹导入为漫画：扫描目录（含子目录）内全部图片，
   /// 按路径自然排序作为一本漫画（书名 = 文件夹名）。
+  ///
+  /// Android 上 file_picker 的 getDirectoryPath 只返回 content:// URI，
+  /// 无法直接读取；因此 Android 走原生系统目录选择器（SAF）+ DocumentsContract
+  /// 枚举真实文件并复制到书库目录。其他平台回退到 file_picker 路径选择。
   Future<Book?> pickImageFolderAsComic() async {
+    final id = _newId();
+    final destDir = p.join(storage.booksDir.path, id);
+    if (Platform.isAndroid) {
+      try {
+        final result = await _importerChannel.invokeMapMethod<String, dynamic>(
+          'pickImageFolderAndCopy',
+          {'destDir': destDir},
+        );
+        if (result == null) return null;
+        final files =
+            (result['files'] as List?)?.cast<String>() ?? <String>[];
+        if (files.isEmpty) return null;
+        final folderName = result['folderName'] as String?;
+        final paths = files..sort(_naturalCompare);
+        final cover = await _makeCover(paths.first);
+        return Book(
+          id: id,
+          title: folderName ?? p.basename(destDir),
+          type: BookType.comic,
+          files: paths,
+          coverPath: cover?.path,
+        );
+      } catch (_) {
+        // 通道失败（如选择器异常）回退到 file_picker 目录选择
+      }
+    }
     final dirPath = await FilePicker.platform.getDirectoryPath();
     if (dirPath == null) return null;
     final root = Directory(dirPath);
@@ -85,7 +119,6 @@ class ImportService {
       }
     }
     if (found.isEmpty) return null;
-    final id = _newId();
     final paths = <String>[];
     for (final src in found) {
       final dest = await _copyIntoLibrary(src, id);
